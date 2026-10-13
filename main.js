@@ -187,7 +187,9 @@
       }
       if (!reduced && window.gsap) gsap.fromTo(el, { scale: 0.86, autoAlpha: 0.3 }, { scale: 1, autoAlpha: 1, duration: 0.7, delay: ((+el.dataset.r) + (+el.dataset.c)) * 0.04, ease: 'back.out(1.8)' });
     });
-    let cur = -1, timer;
+    const scan = $('.tt-scan'), wrap = $('.tt-wrap'), progs = $$('.mt-prog', box);
+    const DUR = 6;
+    let cur = -1, cycle = null, hovering = false;
     const show = (m) => {
       if (m === cur) return; cur = m;
       box.classList.toggle('m1', m === 1);
@@ -195,14 +197,35 @@
       copies.forEach((c, k) => c.classList.toggle('on', k === m));
       mode.textContent = m === 0 ? 'Path A · +2 new periods' : 'Path B · 0 new periods';
       paint(m);
+      if (reduced || !window.gsap) return;
+      // a scan line sweeps the timetable as the school "upgrades"
+      gsap.fromTo(scan, { y: -60, autoAlpha: 1 }, { y: wrap.offsetHeight, duration: 1.1, ease: 'power2.inOut', onComplete: () => gsap.set(scan, { autoAlpha: 0 }) });
+      gsap.fromTo(mode, { y: 10, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.6, ease });
+      const c = copies[m];
+      gsap.fromTo($$('h3, p, li, .mc-best', c), { y: 26, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.9, ease, stagger: 0.06, clearProps: 'transform,opacity,visibility' });
+      gsap.fromTo($$('.cmp-row:not(.cmp-h) > p:not(.both)', box), { autoAlpha: 0.4 }, { autoAlpha: 1, duration: 0.8, stagger: 0.05, clearProps: 'opacity,visibility' });
+      // the active tab shows how long until the other path takes over
+      progs.forEach((p) => p.style.setProperty('--p', 0));
+      if (cycle) cycle.kill();
+      const o = { p: 0 };
+      cycle = gsap.to(o, { p: 1, duration: DUR, ease: 'none', paused: hovering, onUpdate: () => progs[m].style.setProperty('--p', o.p), onComplete: () => show(1 - cur) });
     };
     // the timetable starts "before", then the chosen path upgrades it
     cells.forEach((el) => (el.innerHTML = el.dataset.s));
-    const start = () => { show(0); timer = setInterval(() => show(1 - cur), 6000); };
-    btns.forEach((b, i) => b.addEventListener('click', () => { clearInterval(timer); show(i); }));
-    box.addEventListener('mouseenter', () => clearInterval(timer));
-    if (window.ScrollTrigger) ScrollTrigger.create({ trigger: box, start: 'top 70%', once: true, onEnter: () => setTimeout(start, 700) });
-    else start();
+    btns.forEach((b, i) => b.addEventListener('click', () => { if (i === cur && cycle) { cycle.restart(); return; } show(i); }));
+    box.addEventListener('mouseenter', () => { hovering = true; cycle && cycle.pause(); });
+    box.addEventListener('mouseleave', () => { hovering = false; cycle && cycle.resume(); });
+    if (reduced || !window.ScrollTrigger) { show(0); return; }
+    // entrance: the card rises, tabs slide in, the empty timetable assembles, then Path A switches on
+    gsap.set(cells, { autoAlpha: 0, scale: 0.6 });
+    const tl = gsap.timeline({ paused: true, defaults: { ease } })
+      .from(box, { y: 90, scale: 0.96, autoAlpha: 0, duration: 1.4 })
+      .from('.mt', { x: (i) => (i ? 60 : -60), autoAlpha: 0, duration: 1.1, stagger: 0.1 }, 0.3)
+      .to(cells, { autoAlpha: 1, scale: 1, duration: 0.6, ease: 'back.out(2)', stagger: { each: 0.025, grid: [5, 5], from: 'start' } }, 0.5)
+      .from('.tt-legend span', { y: 14, autoAlpha: 0, duration: 0.8, stagger: 0.1 }, 1.1)
+      .from('.cmp-row', { y: 30, autoAlpha: 0, duration: 1, stagger: 0.08 }, 0.9)
+      .add(() => show(0), 1.4);
+    ScrollTrigger.create({ trigger: box, start: 'top 75%', once: true, onEnter: () => tl.play() });
   })();
 
   /* ---------------- footer: live clocks, newsletter, hex, back to top ---------------- */
@@ -243,6 +266,7 @@
       ps.forEach((el, i) => el.setAttribute('fill', p >= (i + 1) / 4 - 0.001 ? C[i] : p > i / 4 ? C[i] + '66' : 'rgba(20,20,22,.06)'));
       let k = 0; secs.forEach((s, i) => { if (s.getBoundingClientRect().top < innerHeight * 0.5) k = i; });
       n.textContent = String(k + 1).padStart(2, '0');
+      g.closest('.hexprog').classList.toggle('hide', scrollY < innerHeight * 0.6);
     };
     addEventListener('scroll', upd, { passive: true }); upd();
   })();
@@ -255,7 +279,7 @@
     $$('.num').forEach((el) => ScrollTrigger.create({ trigger: el, start: 'top 90%', once: true, onEnter: () => count(el) }));
     [['.pl', '.pl-track'], ['.why-c', '.why-grid'], ['.hw', '.hw-grid'], ['.prog', '.prog-list'], ['.proof-nums > div', '.proof-nums'], ['.partners img', '.partners'], ['.person', '.team'], ['.door', '.door-grid'], ['.offices > div', '.offices'], ['.hw-strip span', '.hw-strip'], ['.values li', '.values']].forEach(([a, b]) =>
       gsap.from(a, { y: 70, autoAlpha: 0, duration: 1.4, ease, stagger: 0.08, scrollTrigger: { trigger: b, start: 'top 86%' } }));
-    [['.models', '.models'], ['.compare', '.compare'], ['.ft-h', '.ft-cta'], ['.ft-actions > *', '.ft-actions'], ['.ft-grid > *', '.ft-grid'], ['.sec-cta', null]].forEach(([a, b]) => $$(a).length && gsap.from(a, { y: 60, autoAlpha: 0, duration: 1.4, ease, stagger: 0.08, scrollTrigger: { trigger: b || a, start: 'top 90%' } }));
+    [['.ft-h', '.ft-cta'], ['.ft-actions > *', '.ft-actions'], ['.ft-grid > *', '.ft-grid'], ['.sec-cta', null]].forEach(([a, b]) => $$(a).length && gsap.from(a, { y: 60, autoAlpha: 0, duration: 1.4, ease, stagger: 0.08, scrollTrigger: { trigger: b || a, start: 'top 90%' } }));
     gsap.from('.accred', { y: 80, autoAlpha: 0, duration: 1.4, ease, scrollTrigger: { trigger: '.accred', start: 'top 85%' } });
     gsap.from('.quote p', { y: 60, autoAlpha: 0, duration: 1.6, ease, scrollTrigger: { trigger: '.quote', start: 'top 80%' } });
 
@@ -326,7 +350,7 @@
   /* ---------------- loader (logo only) → hero ---------------- */
   const heroIn = () => {
     root.style.overflow = ''; lenis && lenis.start();
-    if (reduced) return;
+    if (reduced) { $$('.hnum').forEach((n) => (n.textContent = Number(n.dataset.to).toLocaleString('en-US'))); return; }
     gsap.timeline({ defaults: { ease } })
       .from('.hero-h .ln > span', { yPercent: 115, duration: 1.6, stagger: 0.1 }, 0.1)
       .from('.tag, .hero-p, .hero-ctas', { y: 30, autoAlpha: 0, duration: 1.3, stagger: 0.1 }, 0.5)
@@ -334,7 +358,10 @@
       .from('.orbit', { scale: 0.6, autoAlpha: 0, duration: 1.8, stagger: 0.1 }, 0.3)
       .from('.orbiter', { scale: 0, autoAlpha: 0, duration: 1, stagger: 0.07, ease: 'back.out(2)' }, 0.8)
       .from('.nav', { y: -30, autoAlpha: 0, duration: 1.2, clearProps: 'transform,opacity,visibility' }, 0.4)
-      .from('.hero-foot', { autoAlpha: 0, y: 20, duration: 1.2 }, 1);
+      .from('.hero-foot', { autoAlpha: 0, y: 20, duration: 1.2 }, 1)
+      .from('.hs', { y: 30, autoAlpha: 0, duration: 1.2, stagger: 0.08 }, 0.9)
+      .to('.hs > i', { scaleX: 1, duration: 1.6, ease: 'power3.inOut', stagger: 0.12 }, 1.1)
+      .add(() => $$('.hnum').forEach((el, i) => setTimeout(() => count(el), i * 120)), 1.1);
   };
   // never let a slow font or image hold the page: start after fonts/load, or after 4s at most
   const ready = Promise.race([Promise.all([document.fonts.ready, new Promise((r) => (document.readyState === 'complete' ? r() : addEventListener('load', r, { once: true })))]), new Promise((r) => setTimeout(r, 4000))]);
